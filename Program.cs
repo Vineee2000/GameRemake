@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Drawing;
+using System.Numerics;
 
 namespace GameLogic
 {
@@ -17,7 +19,7 @@ namespace GameLogic
     internal class GameLoop
     {
         private static int tickTime = 15;
-        private List<GameObject> gameObjectsList = new List<GameObject>();
+        private List<IGameObject> gameObjectsList = new List<IGameObject>();
         internal void RunGame()
         {
             Stopwatch sw = new Stopwatch();
@@ -27,7 +29,7 @@ namespace GameLogic
                 foreach (var gameObject in gameObjectsList.ToList())
                 {
                     gameObject.Update();
-                    if (gameObject.dead)
+                    if (gameObject.Dead)
                     {
                         gameObjectsList.Remove(gameObject);
                     }
@@ -41,12 +43,23 @@ namespace GameLogic
             }
         }
     }
-    internal class GameObject
+    public interface IGameObject
     {
-        public bool dead { get; set; } = false;
-        public void Update()
-        {
+        public bool Dead { get; set; }
+        public Point Position { get; set; }
 
-        }
+        public void Update() { }
     }
+    internal interface IMovableGameObject : IGameObject
+    {
+        public Vector2 Velocity { get; set; }
+
+        public Point MoveBy(int x, int y);
+        public Vector2 ChangeVelocity(int x, int y);
+    }
+}
+
+namespace Graphics
+{
+
 }
