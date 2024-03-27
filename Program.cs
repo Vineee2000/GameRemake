@@ -1,4 +1,5 @@
-﻿using GameRemake;
+﻿using GameLogic;
+using GameRemake;
 using Graphics;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,32 +12,43 @@ namespace GameLogic
     {
         static void Main(string[] args)
         {
-            Thread graphicsThread = new Thread(new ThreadStart(Graphics.GraphicsStartup.DisplayWindow));
-            graphicsThread.Start();
             GameLoop gameLoop = new GameLoop();
+            GraphicsStartup.gameLoop = gameLoop;
+            gameLoop.InitialiseGame();
+            Thread graphicsThread = new Thread(new ThreadStart(GraphicsStartup.DisplayWindow));
+            graphicsThread.Start();
             gameLoop.RunGame();
         }
     }
 
     internal class GameLoop
     {
+        public bool running = true;
+
         private static int tickTime = 15;
-        private List<IGameObject> gameObjectsList = new List<IGameObject>();
+        internal Size GameGridSize { get;} = new Size(1000, 1000);
+        internal List<IGameObject> gameObjectsList = new List<IGameObject>();
+        internal void InitialiseGame()
+        {
+            this.gameObjectsList.Add(new Turret(new Point(200, 900)));
+            this.gameObjectsList.Add(new Turret(new Point(400, 900)));
+            this.gameObjectsList.Add(new Turret(new Point(600, 900)));
+            this.gameObjectsList.Add(new Turret(new Point(800, 900)));
+        }
         internal void RunGame()
         {
             Stopwatch sw = new Stopwatch();
             sw.Start();
-            while (true)
+            while (running)
             {
                 foreach (var gameObject in gameObjectsList.ToList())
                 {
                     gameObject.Update();
-                    if (gameObject.Dead)
+                    if (gameObject.ToBeRemoved)
                     {
                         gameObjectsList.Remove(gameObject);
                     }
                 }
-                Console.WriteLine("Tick");
                 if (sw.Elapsed < TimeSpan.FromMilliseconds(tickTime))
                 {
                     Thread.Sleep((int)(tickTime - sw.ElapsedMilliseconds));
@@ -45,32 +57,19 @@ namespace GameLogic
             }
         }
     }
-    public interface IGameObject
-    {
-        public bool Dead { get; set; }
-        public Point Position { get; set; }
-
-        public void Update() { }
-    }
-    internal interface IMovableGameObject : IGameObject
-    {
-        public Vector2 Velocity { get; set; }
-
-        public void MoveBy(int x, int y);
-        public void MoveBy(Vector2 movement);
-        public void ChangeVelocity(int x, int y);
-        public void ChangeVelocity(Vector2 velocity);
-    }
 }
 
 namespace Graphics
 {
-    public class GraphicsStartup
+    public static class GraphicsStartup
     {
-        public static void DisplayWindow()
+        internal static GameLoop gameLoop;
+        internal static void DisplayWindow()
         {
-            GameWindow gameWindow = new GameWindow();
-            Application.Run(gameWindow);
+            GameWindow gameWindow = new GameWindow(gameLoop);
+            Thread thread = new Thread(() => { Application.Run(gameWindow); });
+            thread.Start();
+            gameWindow.GameDrawLoop(TimeSpan.FromMilliseconds(1000 / 60));
         }
     }
     public class GameWindow : Form
@@ -80,10 +79,56 @@ namespace Graphics
         /// </summary>
         private System.ComponentModel.IContainer components = null;
 
-        public GameWindow()
+        private GameLoop gameLoop;
+        private double[] gridConversionFactor;
+
+        internal GameWindow(GameLoop gameLoop)
         {
+            this.gameLoop = gameLoop;
             InitializeComponent();
+
+            this.components = new System.ComponentModel.Container();
+            this.AutoScaleMode = AutoScaleMode.Font;
+            this.ClientSize = new Size(1280, 720);
+            this.gridConversionFactor = new double[2] { (double)this.ClientSize.Width / this.gameLoop.GameGridSize.Width, (double)this.ClientSize.Height / this.gameLoop.GameGridSize.Height };
+            this.Text = "GameWindow";
+
+            this.FormClosed += EndGameLogicThread;
         }
+
+        private void EndGameLogicThread(object sender, EventArgs e)
+        {
+            this.gameLoop.running = false;
+        }
+
+        internal void GameDrawLoop(TimeSpan frameDuration)
+        {
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+            while (this.gameLoop.running)
+            {
+                try
+                {
+                    this.Invoke(() => Refresh());
+                }
+                catch (ObjectDisposedException) { }
+                if (sw.Elapsed < frameDuration)
+                {
+                    Thread.Sleep((int)(frameDuration.TotalMilliseconds - sw.ElapsedMilliseconds));
+                }
+                sw.Restart();
+            }
+        }
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            System.Drawing.Graphics g = e.Graphics;
+            foreach (IFormsDrawableGameObject gameObject in this.gameLoop.gameObjectsList)
+            {
+                gameObject.Draw(this.gridConversionFactor, this, g);
+            }
+        }
+
         /// <summary>
         /// Clean up any resources being used.
         /// </summary>
@@ -105,10 +150,7 @@ namespace Graphics
         /// </summary>
         private void InitializeComponent()
         {
-            this.components = new System.ComponentModel.Container();
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Text = "GameWindow";
+            
         }
 
         #endregion
